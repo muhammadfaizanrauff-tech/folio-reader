@@ -1,0 +1,9 @@
+node_modules
+dist
+public/pdfjs
+tests/fixtures/*.pdf
+tests/screenshots
+*.log
+.DS_Store
+.vercel
+.env*
