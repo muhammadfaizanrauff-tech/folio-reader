@@ -40,6 +40,8 @@ interface Props {
   speech: SpeechReader
   /** Keep the spoken sentence in view. */
   followSpeech: boolean
+  /** Run text recognition (OCR) on pages that have no text. */
+  onRecognizeText?: () => void
   /** Clicked on a word: position of that word. */
   onWordClick?: (pos: SpeechPos, x: number, y: number) => void
 }
@@ -48,7 +50,7 @@ const SENTENCE_END = /[.!?:;…"”’')\]»]$/
 
 export const TextReader = memo(
   forwardRef<ReaderHandle, Props>(function TextReader(props, ref) {
-    const { book, settings, controller, initialAnchor, onPosition, onOpenPdfAt, onTap, query, wholeWord, activeMatch, extractionTick, speech, followSpeech, onWordClick } = props
+    const { book, settings, controller, initialAnchor, onPosition, onOpenPdfAt, onTap, query, wholeWord, activeMatch, extractionTick, speech, followSpeech, onWordClick, onRecognizeText } = props
     const tts = useSpeech(speech)
     const store = usePageStore(book.id)
     const scrollerRef = useRef<HTMLDivElement | null>(null)
@@ -286,6 +288,7 @@ export const TextReader = memo(
           author={book.author}
           itemRef={vl.itemRef}
           onOpenPdfAt={onOpenPdfAt}
+          onRecognizeText={onRecognizeText}
           query={query}
           wholeWord={wholeWord}
           active={activeMatch && activeMatch.page === n ? activeMatch : null}
@@ -340,6 +343,7 @@ interface PageViewProps {
   author?: string
   itemRef: (el: HTMLElement | null) => void
   onOpenPdfAt: (page: number) => void
+  onRecognizeText?: () => void
   query: string
   wholeWord: boolean
   active: ActiveMatch | null
@@ -359,6 +363,7 @@ const PageView = memo(function PageView({
   author,
   itemRef,
   onOpenPdfAt,
+  onRecognizeText,
   query,
   wholeWord,
   active,
@@ -382,9 +387,17 @@ const PageView = memo(function PageView({
   } else if (record.status === 'empty' && record.blocks.length === 0) {
     body = (
       <PageNote>
-        No text on this page – it may be an image or a scanned page.{' '}
+        {onRecognizeText ? 'This page’s text is a picture (image or scan).' : 'This page is a picture without readable text.'}{' '}
+        {onRecognizeText && (
+          <>
+            <button type="button" className="font-medium text-accent hover:underline" onClick={onRecognizeText}>
+              Recognize text
+            </button>
+            {' or '}
+          </>
+        )}
         <button type="button" className="font-medium text-accent hover:underline" onClick={() => onOpenPdfAt(pageNumber)}>
-          View it in PDF view
+          view it in PDF view
         </button>
       </PageNote>
     )

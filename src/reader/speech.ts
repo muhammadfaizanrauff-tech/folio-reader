@@ -157,7 +157,7 @@ export class SpeechReader {
 
   /** Forget cached pages that weren't extracted yet (used during live extraction). */
   invalidateMissing() {
-    for (const [k, v] of this.cache) if (v === null) this.cache.delete(k)
+    for (const [k, v] of this.cache) if (v === null || v.status === 'empty') this.cache.delete(k)
   }
 
   // ---------- control ----------

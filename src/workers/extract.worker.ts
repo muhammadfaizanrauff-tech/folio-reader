@@ -11,10 +11,12 @@
  * matter how many pages the book has. Only the PDF file bytes (needed by
  * PDF.js) and a few numbers per page are held in memory.
  */
-import * as pdfjsWorker from 'pdfjs-dist/build/pdf.worker.mjs'
-import { getDocument, type PDFDocumentProxy } from 'pdfjs-dist'
+// Legacy build: works on phones/older browsers (see src/pdf/pdfjs.ts).
+import * as pdfjsWorker from 'pdfjs-dist/legacy/build/pdf.worker.mjs'
+import { getDocument, OPS } from 'pdfjs-dist/legacy/build/pdf.mjs'
+import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist'
 import { getBook, getDB, pageRange, putPages, updateBook } from '../storage/db'
-import { histogramMode, isRemovableHeaderBlock, layoutPage, runningHeaderThreshold, type RawItem } from '../extraction/textLayout'
+import { histogramMode, isLetterSpaced, isRemovableHeaderBlock, layoutPage, repairLetterSpacing, runningHeaderThreshold, type RawItem } from '../extraction/textLayout'
 import { readOutline } from '../extraction/outline'
 import { serialiseError } from '../pdf/errors'
 import type { FromWorker, ProgressMessage, ToWorker } from '../extraction/protocol'
@@ -143,6 +145,14 @@ async function extract(bookId: string, file: Blob, startPage: number, password?:
           const content = await page.getTextContent()
           const [, , , pageHeight] = page.view
           const items = content.items as RawItem[]
+          // Designed documents often letter-space headings; repair them from the glyph stream.
+          if (items.some((it) => typeof it.str === 'string' && isLetterSpaced(it.str))) {
+            try {
+              repairLetterSpacing(items, await glyphText(page))
+            } catch {
+              // keep the text as extracted
+            }
+          }
           const result = layoutPage(items, pageHeight - page.view[1], histogramMode(bodyHistogram))
           for (const [size, count] of result.sizeHistogram) bodyHistogram.set(size, (bodyHistogram.get(size) ?? 0) + count)
           const isEmpty = result.chars < EMPTY_PAGE_CHARS
@@ -221,6 +231,22 @@ async function extract(bookId: string, file: Blob, startPage: number, password?:
   } finally {
     await pdf.loadingTask.destroy().catch(() => undefined)
   }
+}
+
+/** The page's text exactly as drawn, glyph by glyph, including real space characters. */
+async function glyphText(page: PDFPageProxy): Promise<string> {
+  const ops = await page.getOperatorList()
+  let out = ''
+  for (let i = 0; i < ops.fnArray.length; i++) {
+    const fn = ops.fnArray[i]
+    if (fn !== OPS.showText && fn !== OPS.showSpacedText) continue
+    for (const g of ops.argsArray[i][0] as unknown[]) {
+      if (g && typeof g === 'object' && 'unicode' in g) out += (g as { unicode: string }).unicode
+      // A big negative kerning adjustment in a TJ array is a visual word gap.
+      else if (typeof g === 'number' && g < -250) out += ' '
+    }
+  }
+  return out
 }
 
 function resize(arr: number[] | undefined, len: number): number[] {

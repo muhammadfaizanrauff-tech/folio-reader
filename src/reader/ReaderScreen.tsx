@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { getBook, getProgress, putProgress, updateBook } from '../storage/db'
 import { getSettings, LIMITS, stepSpeed, speedLabel, updateSettings, useSettings } from '../storage/settings'
-import { useExtractionJob } from '../extraction/manager'
+import { extraction, useExtractionJob } from '../extraction/manager'
 import { navigate } from '../router'
 import { ScrollController, useAutoScrollState } from './scrollController'
 import { PositionStore, usePosition } from './position'
@@ -106,11 +106,14 @@ function Reader({ book, setBook, initial }: { book: Book; setBook: (b: Book) => 
   // ---- live extraction: refresh book stats as pages arrive ----
   const running = job?.status === 'running' || job?.status === 'cancelling'
   const processedLive = job?.progress?.processed ?? 0
+  const ocrLive = running && job?.progress?.phase === 'ocr' ? job.progress.ocr : undefined
+  /** Changes whenever new text is available (extracted pages or OCR-recognized pages). */
+  const liveTick = processedLive + (ocrLive?.done ?? 0)
   useEffect(() => {
     if (!job) return
     const t = setTimeout(() => getBook(book.id).then((b) => b && setBook(b)), running ? 1200 : 0)
     return () => clearTimeout(t)
-  }, [processedLive, running, job, book.id, setBook])
+  }, [liveTick, running, job, book.id, setBook])
 
   // ---- position & progress ----
   const cumChars = useMemo(() => {
@@ -199,6 +202,11 @@ function Reader({ book, setBook, initial }: { book: Book; setBook: (b: Book) => 
     [controller],
   )
 
+  const recognizeText = useCallback(() => {
+    flash('Recognizing text in image pages…')
+    extraction.runOcr(book.id)
+  }, [book.id, flash])
+
   const openPdfAt = useCallback(
     (page: number) => {
       controller.stop()
@@ -248,7 +256,7 @@ function Reader({ book, setBook, initial }: { book: Book; setBook: (b: Book) => 
   }, [speech, settings.speechVoice, settings.speechRate])
   useEffect(() => {
     if (running) speech.invalidateMissing()
-  }, [processedLive, running, speech])
+  }, [liveTick, running, speech])
   // Scrolling by hand while listening: stop following (a "Follow" button brings it back).
   useEffect(
     () =>
@@ -524,7 +532,8 @@ function Reader({ book, setBook, initial }: { book: Book; setBook: (b: Book) => 
             query={search.activeQuery}
             wholeWord={search.wholeWord}
             activeMatch={activeMatch}
-            extractionTick={running ? processedLive : 0}
+            extractionTick={running ? liveTick : 0}
+            onRecognizeText={book.ocrAttempted ? undefined : recognizeText}
             speech={speech}
             followSpeech={follow}
             onWordClick={settings.readAloud ? onWordClick : undefined}
@@ -587,7 +596,9 @@ function Reader({ book, setBook, initial }: { book: Book; setBook: (b: Book) => 
         {running && (
           <div className={cx('pointer-events-auto mx-auto -mt-3 flex w-fit items-center gap-2 rounded-full bg-accent-soft px-3 py-1 text-[12px] text-ink-soft')}>
             <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent" />
-            Still extracting · {formatNumber(extractedPages)} of {formatNumber(book.pageCount)} pages ready
+            {ocrLive
+              ? `Recognizing text in image pages · ${formatNumber(ocrLive.done)} of ${formatNumber(ocrLive.total)}`
+              : `Still extracting · ${formatNumber(extractedPages)} of ${formatNumber(book.pageCount)} pages ready`}
           </div>
         )}
       </header>
@@ -669,7 +680,7 @@ function Reader({ book, setBook, initial }: { book: Book; setBook: (b: Book) => 
       <SearchPanel open={panel === 'search'} onClose={() => setPanel(null)} search={search} extractedPages={extractedPages} pageCount={book.pageCount} />
       <ShortcutsDialog open={showShortcuts} onClose={() => setShowShortcuts(false)} />
 
-      {book.likelyScanned && viewMode === 'text' && <ScannedNotice onPdf={() => switchView('pdf')} />}
+      {book.likelyScanned && viewMode === 'text' && !ocrLive && <ScannedNotice onPdf={() => switchView('pdf')} onRecognize={book.ocrAttempted ? undefined : recognizeText} />}
     </div>
   )
 }
@@ -747,17 +758,24 @@ function ThinProgress({ positions, hidden }: { positions: PositionStore; hidden:
   )
 }
 
-function ScannedNotice({ onPdf }: { onPdf: () => void }) {
+function ScannedNotice({ onPdf, onRecognize }: { onPdf: () => void; onRecognize?: () => void }) {
   const [dismissed, setDismissed] = useState(false)
   if (dismissed) return null
   return (
     <div role="status" className="fade-in absolute left-1/2 top-20 z-30 flex w-[min(560px,calc(100vw-24px))] -translate-x-1/2 items-start gap-3 rounded-2xl border border-line bg-panel p-4 text-[13px] leading-relaxed text-ink-soft shadow-float backdrop-blur-xl">
       <Icon name="info" size={18} className="mt-0.5 shrink-0 text-accent" />
       <p className="flex-1">
-        Most pages in this PDF contain no selectable text – it looks like a scanned book. Text recognition (OCR) isn’t available yet, so the PDF view is the best way to read it.
+        {onRecognize
+          ? 'Most pages in this PDF have their text as pictures (a scan, or a designed/presentation export). Folio can read them with on-device text recognition, or you can use the PDF view.'
+          : 'Most pages in this PDF are pictures without readable text. The PDF view shows them exactly as designed.'}
       </p>
       <div className="flex shrink-0 flex-col gap-1.5">
-        <Button size="sm" variant="primary" onClick={onPdf}>
+        {onRecognize && (
+          <Button size="sm" variant="primary" onClick={() => (setDismissed(true), onRecognize())}>
+            Recognize text
+          </Button>
+        )}
+        <Button size="sm" variant={onRecognize ? 'secondary' : 'primary'} onClick={onPdf}>
           PDF view
         </Button>
         <Button size="sm" variant="ghost" onClick={() => setDismissed(true)}>

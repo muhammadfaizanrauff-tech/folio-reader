@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react'
 import { clearPages, getBook, getFile, updateBook } from '../storage/db'
 import { friendlyError, type FriendlyError } from '../pdf/errors'
 import type { FromWorker, ProgressMessage, StartMessage } from './protocol'
+import { ocrBook } from './ocr'
 
 /**
  * UI-side controller for the extraction worker.
@@ -28,6 +29,7 @@ class ExtractionManager {
   private passwords = new Map<string, string>()
   private listeners = new Set<Listener>()
   private snapshot: ReadonlyMap<string, JobState> = new Map()
+  private ocrCancel = new Set<string>()
 
   subscribe = (l: Listener) => {
     this.listeners.add(l)
@@ -101,6 +103,11 @@ class ExtractionManager {
   }
 
   cancel(bookId: string) {
+    if (this.jobs.get(bookId)?.progress?.phase === 'ocr') {
+      this.ocrCancel.add(bookId)
+      this.emit(bookId, { status: 'cancelling' })
+      return
+    }
     const worker = this.workers.get(bookId)
     if (!worker) return
     this.emit(bookId, { status: 'cancelling' })
@@ -121,7 +128,8 @@ class ExtractionManager {
         break
       case 'done':
         this.stopWorker(msg.bookId)
-        this.emit(msg.bookId, { status: msg.status === 'complete' ? 'complete' : 'cancelled' })
+        if (msg.status === 'complete') this.afterExtraction(msg.bookId)
+        else this.emit(msg.bookId, { status: 'cancelled' })
         break
       case 'error': {
         const err = Object.assign(new Error(msg.error.message), { name: msg.error.name, code: msg.error.code })
@@ -129,6 +137,53 @@ class ExtractionManager {
         break
       }
     }
+  }
+
+  /** After text extraction: recognise image-only pages automatically, then finish. */
+  private async afterExtraction(bookId: string) {
+    const book = await getBook(bookId).catch(() => undefined)
+    if (book && book.emptyPages.length > 0) await this.runOcr(bookId)
+    else this.emit(bookId, { status: 'complete' })
+  }
+
+  /**
+   * Text recognition (OCR) for pages without extractable text. Also callable
+   * later from the reader ("Recognise text"). Cancelling keeps what's done.
+   */
+  async runOcr(bookId: string): Promise<void> {
+    const cur = this.jobs.get(bookId)
+    if (cur?.progress?.phase === 'ocr' && (cur.status === 'running' || cur.status === 'cancelling')) return
+    const book = await getBook(bookId)
+    if (!book) return
+    this.ocrCancel.delete(bookId)
+    const base: ProgressMessage = {
+      type: 'progress',
+      bookId,
+      pageCount: book.pageCount,
+      processed: book.processedPages,
+      currentPage: book.processedPages,
+      emptyPages: book.emptyPages.length,
+      failedPages: book.failedPages.length,
+      totalCharacters: book.totalCharacters,
+      pagesPerSecond: 0,
+      phase: 'ocr',
+    }
+    this.emit(bookId, { status: 'running', error: undefined, progress: { ...base, ocr: { done: 0, total: book.emptyPages.length, page: book.emptyPages[0] ?? 1, recognised: 0 } } })
+    const started = performance.now()
+    try {
+      await ocrBook(bookId, {
+        password: this.passwords.get(bookId),
+        isCancelled: () => this.ocrCancel.has(bookId),
+        onProgress: (p) => {
+          const secs = (performance.now() - started) / 1000
+          this.emit(bookId, { progress: { ...base, ocr: p, emptyPages: base.emptyPages - p.recognised, pagesPerSecond: p.done / Math.max(0.001, secs) } })
+        },
+      })
+    } catch {
+      // OCR is best-effort: the book stays readable, image pages remain viewable in PDF view.
+    }
+    this.ocrCancel.delete(bookId)
+    this.emit(bookId, { status: 'complete' })
   }
 
   private fail(bookId: string, err: unknown) {

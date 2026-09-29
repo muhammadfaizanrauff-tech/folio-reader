@@ -16,3 +16,17 @@ for (const dir of ['cmaps', 'standard_fonts', 'wasm']) {
   cpSync(from, join(dest, dir), { recursive: true })
 }
 console.log('Copied PDF.js assets to public/pdfjs')
+
+// Tesseract (OCR for image-only pages): worker, WASM cores and English data,
+// served locally so text recognition works offline.
+const tDest = join(root, 'public', 'tesseract')
+mkdirSync(tDest, { recursive: true })
+const tjs = join(root, 'node_modules', 'tesseract.js', 'dist', 'worker.min.js')
+if (existsSync(tjs)) cpSync(tjs, join(tDest, 'worker.min.js'))
+const core = join(root, 'node_modules', 'tesseract.js-core')
+for (const f of ['tesseract-core-lstm.wasm.js', 'tesseract-core-simd-lstm.wasm.js', 'tesseract-core-relaxedsimd-lstm.wasm.js']) {
+  if (existsSync(join(core, f))) cpSync(join(core, f), join(tDest, f))
+}
+const eng = join(root, 'node_modules', '@tesseract.js-data', 'eng', '4.0.0_best_int', 'eng.traineddata.gz')
+if (existsSync(eng)) cpSync(eng, join(tDest, 'eng.traineddata.gz'))
+console.log('Copied Tesseract OCR assets to public/tesseract')

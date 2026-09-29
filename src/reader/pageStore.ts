@@ -69,11 +69,11 @@ export class PageStore {
     }
   }
 
-  /** Forget pages that weren't extracted yet so they're re-read (used while extraction is running). */
+  /** Forget pages that weren't extracted (or had no text) so they're re-read while extraction/OCR runs. */
   invalidateMissing() {
     let changed = false
     for (const [k, v] of this.cache) {
-      if (v === null) {
+      if (v === null || v.status === 'empty') {
         this.cache.delete(k)
         changed = true
       }

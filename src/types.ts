@@ -49,6 +49,10 @@ export interface Book {
   /** Small JPEG thumbnail of page 1, used as the cover on the library screen. */
   cover?: Blob
   extractionMs?: number
+  /** Pages whose text was recognised with OCR. */
+  ocrPages?: number
+  /** Text recognition has been run on this book's image pages. */
+  ocrAttempted?: boolean
 }
 
 export interface PageRecord {
@@ -62,6 +66,8 @@ export interface PageRecord {
   /** Normalised text of the first/last line, used to detect running headers/footers. */
   hfTop?: string
   hfBottom?: string
+  /** Text was recognised from the page image (OCR). */
+  ocr?: boolean
 }
 
 export type ThemeName = 'light' | 'sepia' | 'dark' | 'comfort'

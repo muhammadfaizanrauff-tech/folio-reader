@@ -17,6 +17,14 @@ export type InspectResult = { ok: true; info: PdfInfo } | { ok: false; error: Fr
 
 const JUNK_TITLE = /^(untitled|microsoft word|document\d*|none|null|title|\s*)$|\.(docx?|pdf|indd|tex)$|^microsoft word - /i
 
+/** crypto.randomUUID only exists on HTTPS/localhost; phones on a plain-http LAN address don't have it. */
+function newId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID()
+  const bytes = new Uint8Array(16)
+  crypto.getRandomValues(bytes)
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('')
+}
+
 export function titleFromFilename(name: string): string {
   return (
     name
@@ -108,7 +116,7 @@ export async function importBook(info: PdfInfo): Promise<Book> {
   await requestPersistentStorage()
   const now = Date.now()
   const book: Book = {
-    id: crypto.randomUUID(),
+    id: newId(),
     filename: info.file.name,
     title: info.title,
     author: info.author,

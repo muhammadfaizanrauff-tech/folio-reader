@@ -209,3 +209,32 @@ await scanned()
 writeFileSync(join(out, 'corrupt.pdf'), Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.from(Array.from({ length: 5000 }, (_, i) => (i * 131) % 256))]))
 writeFileSync(join(out, 'not-a-pdf.pdf'), 'This is just a text file pretending to be a PDF.\n')
 console.log('corrupt.pdf, not-a-pdf.pdf')
+
+// slides-images.pdf – a presentation whose text exists only as pictures (like
+// many Canva / PowerPoint / Keynote exports). Rendered with Chrome, then each
+// slide screenshot is embedded as an image, so there is no text layer at all.
+async function imageSlides() {
+  const { chromium } = await import('playwright-core')
+  const browser = await chromium.launch({ channel: 'chrome', headless: true })
+  const page = await browser.newPage({ viewport: { width: 1280, height: 720 }, deviceScaleFactor: 1.5 })
+  const slides = [
+    ['Quarterly Growth Plan', 'A presentation exported as images · September 2026'],
+    ['Where We Stand Today', 'Revenue grew steadily through the summer. Most new customers found us through referrals, and the average order value increased by twelve percent compared with last year.'],
+    ['Three Priorities', 'First, launch the new website before the holiday season. Second, answer every new enquiry within one hour. Third, publish one helpful article every week.'],
+    ['Next Steps', 'Approve the budget, confirm the launch date, and schedule a review meeting at the end of the month.'],
+  ]
+  const pdf = await PDFDocument.create()
+  for (const [title, body] of slides) {
+    await page.setContent(`<body style="margin:0;width:1280px;height:720px;background:linear-gradient(135deg,#1d2b4f,#3b5998);font-family:Georgia,serif;color:#fff;display:flex;flex-direction:column;justify-content:center;padding:0 110px;box-sizing:border-box">
+      <p style="letter-spacing:.3em;font:600 18px Helvetica,Arial;opacity:.8;margin:0 0 18px">NORTHWIND STUDIO</p>
+      <h1 style="font-size:64px;margin:0 0 28px;font-weight:600">${title}</h1>
+      <p style="font:28px/1.5 Helvetica,Arial;margin:0;max-width:980px">${body}</p></body>`)
+    const png = await pdf.embedPng(await page.screenshot({ type: 'png' }))
+    const p = pdf.addPage([960, 540])
+    p.drawImage(png, { x: 0, y: 0, width: 960, height: 540 })
+  }
+  await browser.close()
+  writeFileSync(join(out, 'slides-images.pdf'), await pdf.save())
+  console.log('slides-images.pdf  4 presentation slides with text only as images')
+}
+await imageSlides()

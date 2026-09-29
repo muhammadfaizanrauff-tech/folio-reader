@@ -136,7 +136,7 @@ function buildLines(runs: Run[]): Line[] {
   return lines
 }
 
-function joinLine(text: string, next: string): string {
+export function joinLine(text: string, next: string): string {
   if (!text) return next
   if (text.endsWith('­')) return text.slice(0, -1) + next
   // Rejoin words hyphenated across a line break: "exam-" + "ple" → "example"
@@ -145,7 +145,7 @@ function joinLine(text: string, next: string): string {
   return text + ' ' + next
 }
 
-function classify(text: string, lineCount: number, size: number, bodySize: number): BlockType {
+export function classify(text: string, lineCount: number, size: number, bodySize: number): BlockType {
   const len = text.length
   if (len === 0 || len > 160 || lineCount > 3) return 'p'
   const ratio = bodySize > 0 ? size / bodySize : 1
@@ -241,7 +241,8 @@ export function layoutPage(items: RawItem[], pageHeight: number, bookBodySize = 
     if (para && prev) {
       const gap = prev.y - line.y
       const sizeChange = Math.abs(line.size - prev.size) > Math.max(line.size, prev.size) * 0.14
-      const bigGap = gap > typicalGap * 1.45 || gap < -line.size * 0.8
+      // Scale by the line's own size too, so a multi-line headline's normal leading isn't read as a paragraph break.
+      const bigGap = gap > Math.max(typicalGap * 1.45, Math.max(line.size, prev.size) * 1.45) || gap < -line.size * 0.8
       const indentFromMargin = line.x - leftMargin
       const indent = indentFromMargin > line.size * 0.8 && indentFromMargin < line.size * 6 && prev.x - leftMargin < line.size * 0.5
       const prevShort = prev.xEnd < rightEdge - Math.max(textWidth * 0.18, prev.size * 3)
@@ -304,4 +305,47 @@ export function isRemovableHeaderBlock(block: Block | undefined): boolean {
 /** How often a header/footer key must repeat before it's considered a running header. */
 export function runningHeaderThreshold(pageCount: number): number {
   return Math.max(3, Math.round(pageCount * 0.15))
+}
+
+/**
+ * "W E B S I T E  R E V I E W" – headings with CSS letter-spacing come out of
+ * PDF.js with a space after every letter (and word gaps look the same).
+ */
+export function isLetterSpaced(str: string): boolean {
+  const tokens = str.trim().split(' ')
+  if (tokens.length < 4) return false
+  let single = 0
+  for (const t of tokens) if ([...t].length === 1) single++
+  return single / tokens.length >= 0.6
+}
+
+/**
+ * Rebuilds letter-spaced strings using the page's real glyph stream (which
+ * still contains the true space characters), e.g. "P R E PA R E D F O R" →
+ * "PREPARED FOR". Mutates the items; returns how many were repaired.
+ */
+export function repairLetterSpacing(items: RawItem[], glyphs: string): number {
+  const map: number[] = []
+  let compact = ''
+  for (let i = 0; i < glyphs.length; i++) {
+    if (/\s/.test(glyphs[i])) continue
+    compact += glyphs[i]
+    map.push(i)
+  }
+  let cursor = 0
+  let fixed = 0
+  for (const it of items) {
+    if (typeof it.str !== 'string' || !isLetterSpaced(it.str)) continue
+    const letters = it.str.replace(/\s+/g, '')
+    let k = compact.indexOf(letters, cursor)
+    if (k < 0) k = compact.indexOf(letters)
+    if (k < 0) continue
+    const seg = glyphs.slice(map[k], map[k + letters.length - 1] + 1).replace(/\s+/g, ' ')
+    // No word breaks recoverable for a long run: leave it as it was rather than glue words together.
+    if (!/\s/.test(seg) && letters.length > 14) continue
+    it.str = (it.str.startsWith(' ') ? ' ' : '') + seg + (it.str.endsWith(' ') ? ' ' : '')
+    cursor = k + letters.length
+    fixed++
+  }
+  return fixed
 }

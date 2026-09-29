@@ -438,9 +438,24 @@ await step('scanned PDF: detected, explained, opens in PDF view', async () => {
   await page.waitForURL(/#\/read\//, { timeout: 60000 })
   await page.waitForSelector('.reader-scroll canvas', { timeout: 15000 })
   await page.click('button[role=radio]:has-text("Reading View")')
-  await page.waitForSelector('text=/looks like a scanned book/')
-  await page.waitForSelector('text=/No text on this page/')
+  await page.waitForSelector('text=/pictures without readable text/')
+  await page.waitForSelector('text=/picture without readable text/')
   await shot('14-scanned')
+})
+
+await step('OCR: presentation with text only in images becomes readable text', async () => {
+  await uploadFile('slides-images.pdf')
+  await page.waitForSelector('button:has-text("Extract & Read")', { timeout: 15000 })
+  await page.click('button:has-text("Extract & Read")')
+  await page.waitForSelector('text=Recognizing text in image pages', { timeout: 30000 })
+  await page.waitForURL(/#\/read\//, { timeout: 180000 })
+  await page.waitForSelector('.reader-text h1:has-text("Next Steps")', { timeout: 20000 })
+  const heads = await page.$$eval('.reader-text h1', (h) => h.map((x) => x.textContent))
+  const text = await page.textContent('.reader-text')
+  console.log(`      headings: ${heads.join(' · ')}`)
+  assert(heads.includes('Quarterly Growth Plan') && heads.includes('Three Priorities'), 'slide titles not recognized')
+  assert(text.includes('answer every new enquiry within one hour'), 'body text not recognized')
+  assert(!text.includes('NORTHWIND STUDIO'), 'repeated slide label not removed')
 })
 
 // ------------------------------------------------------------------ cancel + resume

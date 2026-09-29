@@ -27,7 +27,9 @@ export interface ProgressMessage {
   totalCharacters: number
   /** Pages processed per second in this run (measured, not estimated). */
   pagesPerSecond: number
-  phase: 'opening' | 'outline' | 'pages' | 'finishing'
+  phase: 'opening' | 'outline' | 'pages' | 'finishing' | 'ocr'
+  /** Text recognition of image-only pages (runs after extraction). */
+  ocr?: { done: number; total: number; page: number; recognised: number }
 }
 
 export interface DoneMessage {

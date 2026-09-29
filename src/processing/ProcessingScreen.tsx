@@ -42,8 +42,9 @@ export function ProcessingScreen({ bookId }: { bookId: string }) {
   const p = job?.progress
   const pageCount = p?.pageCount ?? book.pageCount
   const processed = p?.processed ?? book.processedPages
-  const pct = pageCount ? processed / pageCount : 0
-  const remaining = p && p.pagesPerSecond > 0 ? (pageCount - processed) / p.pagesPerSecond : NaN
+  const ocr = p?.phase === 'ocr' ? p.ocr : undefined
+  const pct = ocr ? (ocr.total ? ocr.done / ocr.total : 0) : pageCount ? processed / pageCount : 0
+  const remaining = p && p.pagesPerSecond > 0 ? (ocr ? ocr.total - ocr.done : pageCount - processed) / p.pagesPerSecond : NaN
   const running = job?.status === 'running' || job?.status === 'cancelling'
 
   let headline = 'Extracting your book…'
@@ -55,9 +56,12 @@ export function ProcessingScreen({ bookId }: { bookId: string }) {
     if (!p || p.phase === 'opening') phaseText = 'Opening PDF…'
     else if (p.phase === 'outline') phaseText = 'Reading table of contents…'
     else if (p.phase === 'finishing') phaseText = 'Cleaning up headers and building contents…'
-    else phaseText = `Extracting page ${formatNumber(p.currentPage)} of ${formatNumber(pageCount)}…`
+    else if (ocr) {
+      headline = 'Recognizing text in image pages…'
+      phaseText = ocr.done === 0 && ocr.recognised === 0 ? 'Starting text recognition (OCR)…' : `Reading page ${formatNumber(ocr.page)} from its image · ${formatNumber(ocr.recognised)} recognized so far`
+    } else phaseText = `Extracting page ${formatNumber(p.currentPage)} of ${formatNumber(pageCount)}…`
   }
-  if (job?.status === 'cancelling') phaseText = 'Stopping after the current page…'
+  if (job?.status === 'cancelling') phaseText = ocr ? 'Stopping text recognition – your book stays readable…' : 'Stopping after the current page…'
 
   const passwordError = job?.status === 'error' && (job.error?.kind === 'password-required' || job.error?.kind === 'password-incorrect')
 
@@ -74,22 +78,27 @@ export function ProcessingScreen({ bookId }: { bookId: string }) {
       <div className="mt-10 text-left">
         <div className="mb-2 flex items-baseline justify-between text-[14px]">
           <span className="text-ink tabular-nums">
-            Page {formatNumber(processed)} / {formatNumber(pageCount)}
+            {ocr ? `Image page ${formatNumber(Math.min(ocr.done + 1, ocr.total))} / ${formatNumber(ocr.total)}` : `Page ${formatNumber(processed)} / ${formatNumber(pageCount)}`}
           </span>
           <span className="text-[22px] font-semibold tabular-nums text-ink">{Math.floor(pct * 100)}%</span>
         </div>
         <ProgressBar value={pct} striped={running} className="h-2" />
         <p className="mt-3 min-h-[1.5em] text-[14px] text-ink-soft" aria-live="polite">
           {phaseText}
-          {running && p?.phase === 'pages' && Number.isFinite(remaining) && processed > 3 && <span className="text-ink-faint"> · about {formatDuration(remaining)} left</span>}
+          {running && (p?.phase === 'pages' || (ocr && ocr.done > 0)) && Number.isFinite(remaining) && (ocr ? ocr.done > 0 : processed > 3) && <span className="text-ink-faint"> · about {formatDuration(remaining)} left</span>}
         </p>
 
+        {ocr && (
+          <p className="mt-2 rounded-xl bg-accent-soft p-3 text-[13px] leading-relaxed text-ink-soft">
+            Some pages have their text as pictures (common in presentations, designed documents and scans). Folio is reading them with on-device text recognition. This takes a second or two per page; you can start reading now and they’ll fill in.
+          </p>
+        )}
         <dl className="mt-6 grid grid-cols-3 gap-4 rounded-2xl border border-line p-4 text-center">
           <Stat label="Pages processed" value={formatNumber(processed)} />
           <Stat label="No text (scanned?)" value={formatNumber(p?.emptyPages ?? book.emptyPages.length)} />
           <Stat label="Failed pages" value={formatNumber(p?.failedPages ?? book.failedPages.length)} tone={(p?.failedPages ?? book.failedPages.length) ? 'warn' : undefined} />
         </dl>
-        {p && p.pagesPerSecond > 0 && running && (
+        {p && p.pagesPerSecond > 0 && running && !ocr && (
           <p className="mt-3 text-center text-[12px] text-ink-faint">
             {p.pagesPerSecond.toFixed(p.pagesPerSecond < 10 ? 1 : 0)} pages/second · {formatNumber(p.totalCharacters)} characters so far
           </p>
@@ -138,8 +147,13 @@ export function ProcessingScreen({ bookId }: { bookId: string }) {
               Continue in background
             </Button>
             <Button onClick={() => extraction.cancel(bookId)} disabled={job?.status === 'cancelling'} icon="stop">
-              Cancel
+              {ocr ? 'Skip recognition' : 'Cancel'}
             </Button>
+            {ocr && (
+              <Button variant="primary" icon="book-open" onClick={() => navigate({ name: 'reader', bookId })}>
+                Start reading
+              </Button>
+            )}
           </>
         )}
         {job?.status === 'complete' && (

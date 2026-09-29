@@ -62,7 +62,9 @@ export function BookCard({ entry, job, onOpen, onResumeExtraction, onReextract, 
   const pct = progress?.percentage ?? 0
 
   let status: { text: string; tone: 'info' | 'warn' | 'error' } | null = null
-  if (running) status = { text: `Extracting · ${Math.floor(extractedPct * 100)}%`, tone: 'info' }
+  const ocr = running && job?.progress?.phase === 'ocr' ? job.progress.ocr : undefined
+  if (ocr) status = { text: `Recognizing text · ${ocr.done} of ${ocr.total} image pages`, tone: 'info' }
+  else if (running) status = { text: `Extracting · ${Math.floor(extractedPct * 100)}%`, tone: 'info' }
   else if (book.extractionStatus === 'error') status = { text: 'Extraction failed', tone: 'error' }
   else if (book.extractionStatus === 'cancelled' || book.extractionStatus === 'pending')
     status = { text: `Paused · ${formatNumber(book.processedPages)} of ${formatNumber(book.pageCount)} pages`, tone: 'warn' }

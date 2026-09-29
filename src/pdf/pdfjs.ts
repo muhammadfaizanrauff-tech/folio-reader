@@ -1,6 +1,9 @@
-import * as pdfjs from 'pdfjs-dist'
+// The *legacy* build includes fallbacks for newer JavaScript features the modern
+// build calls directly (e.g. Map.prototype.getOrInsertComputed, Math.sumPrecise).
+// Without them PDFs fail to open on most phones and older browsers.
+import * as pdfjs from 'pdfjs-dist/legacy/build/pdf.mjs'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import workerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl
 
