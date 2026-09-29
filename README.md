@@ -35,6 +35,7 @@ npm run preview      # serve the built app locally
 | Themes | Light (warm off-white), Sepia, Dark (near-black) and Eye Comfort (warm, dim, lower contrast). **Ambient light** adds an adjustable warm tint and dimming over the whole app. It is a comfort feature only, not a medical one. |
 | Auto-scroll | Start / pause / resume / stop, and a perceptual speed slider (Very slow → Very fast, 4–240 px/s) with −/+ and presets. Speed changes live while scrolling. Manually scrolling pauses it, and a visible **Resume** button appears. |
 | Read aloud | A **separate, switchable feature** (🔊 in the toolbar, **L**, or Settings → Read aloud). It speaks the book with your device's own voices, fully offline via the browser's Web Speech API. The current sentence and word are highlighted and the page follows along. **Click any word → "Read aloud from here"**; while it's speaking, clicking a word jumps there. It has previous/next sentence, pause/resume, stop, voice choice and speed (0.5–2×), and continues across the whole book. Turn it off and everything behaves exactly as before. |
+| Image-only pages (OCR) | Presentations, designed exports and scans often store text as pictures. Folio recognizes it automatically after extraction, with on-device OCR (Tesseract WebAssembly plus English data served from the app, so it works offline). Slide titles and body text become headings and paragraphs, and repeated slide labels are removed. You can also start it from the reader with **Recognize text**. |
 | Fullscreen | Distraction-free mode: controls hide, and reappear when the pointer nears the top or bottom edge. Esc exits. Browsers without element fullscreen fall back to a focus mode. |
 | Search | Full-book search in a worker, with match count, previous/next, highlighted results with snippets, and jump to any result. |
 | Contents | Uses the PDF's bookmarks when present; otherwise builds a table of contents from detected headings. Shows the current chapter. |
@@ -178,9 +179,26 @@ The end-to-end suite (`tests/e2e.mjs`) covers 26 scenarios: invalid, corrupt and
 
 The password-protected fixture (`tests/fixtures/locked.pdf`) is optional: pdf-lib can't encrypt, so it was generated with `pypdf` (`writer.encrypt('secret', algorithm='RC4-128')`). The test is skipped if the file is missing.
 
+## Devices and browsers
+
+- The app uses the **legacy build of PDF.js**. The modern build calls very new JavaScript features directly (`Map.prototype.getOrInsertComputed`, `Math.sumPrecise`), so PDFs failed to open on most phones and older browsers. The legacy build ships fallbacks.
+- It works without `crypto.randomUUID` (missing on non-HTTPS origins), respects iPhone safe areas (notch and home indicator), uses the real visible height (`100dvh`), and avoids iOS zoom-on-focus. Touch targets are at least 44 px.
+- Tested in Chrome desktop and in iPhone emulation with those newer APIs removed.
+- `localhost` only works on the computer running the dev server. On a phone, use the deployed (Vercel) address.
+
+## Design principles
+
+The reading screen follows well-known design principles:
+
+- **Few choices at once** (Hick's law): the toolbar is Play, Speed, **Aa**, Read aloud and More.
+- **Progressive disclosure:** everyday display options live in the **Aa** panel (theme, text size, font, words per line, warm light); everything else is under More.
+- **Big, forgiving targets** (Fitts's law): at least 44 px on touch screens.
+- **Recognition over recall:** a one-time welcome tip, labelled steppers ("11 words per line", "Normal · 36 px/s") and tooltips.
+- **Calm by default:** controls fade while reading and return when needed.
+
 ## Limitations
 
-- **No OCR.** Scanned or image-only pages are detected and explained, and remain readable in PDF View, but they contain no extractable text. `src/extraction/ocr.ts` defines an `OcrProvider` interface, and tesseract.js in its own worker could be plugged in for empty pages.
+- **OCR is English-only** and takes about 1–2 s per image page on a laptop, longer on phones. Handwriting and very stylised fonts may not be recognized; those pages stay viewable in PDF View.
 - **Layout heuristics.** Multi-column layouts, tables, footnotes, poetry and code blocks are flattened into paragraphs in reading order. Heading detection relies on font size and common patterns, so unusual typography may produce too many or too few headings.
 - **Memory.** PDF.js needs the whole PDF file in memory while extracting or showing PDF View. Files above about 1.8 GB are rejected, and very large files on low-memory devices can still hit browser limits. The extracted text itself is never fully loaded.
 - **Very long scroll heights.** Browsers cap element height (about 33 M px in Chrome, about 17 M px in Firefox). A book of about 5,000 pages at a very large font size and narrow width could approach this cap.

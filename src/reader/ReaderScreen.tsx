@@ -27,6 +27,21 @@ import { formatNumber, isEditableTarget } from '../utils/format'
 import type { Book, ReadingProgress, ThemeName, TocEntry, ViewMode } from '../types'
 
 type Panel = 'settings' | 'toc' | 'search' | null
+const WELCOME_KEY = 'folio.tip.reader.v1'
+const readFlag = (k: string) => {
+  try {
+    return localStorage.getItem(k) === '1'
+  } catch {
+    return true
+  }
+}
+const writeFlag = (k: string) => {
+  try {
+    localStorage.setItem(k, '1')
+  } catch {
+    // private mode – the tip just shows again next time
+  }
+}
 const THEME_CYCLE: ThemeName[] = ['light', 'sepia', 'dark', 'comfort']
 
 export function ReaderScreen({ bookId }: { bookId: string }) {
@@ -88,7 +103,12 @@ function Reader({ book, setBook, initial }: { book: Book; setBook: (b: Book) => 
   const [showShortcuts, setShowShortcuts] = useState(false)
   const [hud, setHud] = useState<{ text: string; id: number } | null>(null)
 
-  const chrome = useChrome({ fullscreen: fs.isFullscreen, autoScrolling: auto.state === 'running', pinned: panel !== null || showShortcuts || readHere !== null })
+  const [showWelcome, setShowWelcome] = useState(() => !readFlag(WELCOME_KEY))
+  const dismissWelcome = useCallback(() => {
+    setShowWelcome(false)
+    writeFlag(WELCOME_KEY)
+  }, [])
+  const chrome = useChrome({ fullscreen: fs.isFullscreen, autoScrolling: auto.state === 'running', pinned: panel !== null || showShortcuts || readHere !== null || showWelcome })
 
   useEffect(() => {
     controller.setSpeed(settings.autoScrollSpeed)
@@ -248,6 +268,16 @@ function Reader({ book, setBook, initial }: { book: Book; setBook: (b: Book) => 
     if (auto.state === 'running') return
     controller.start()
   }, [auto.state, controller])
+
+  // Starting auto-scroll (button or Space) means the welcome tip did its job.
+  useEffect(() => {
+    const off = controller.subscribe(() => {
+      if (controller.state === 'running') dismissWelcome()
+    })
+    return () => {
+      off()
+    }
+  }, [controller, dismissWelcome])
 
   // ---- read aloud wiring ----
   useEffect(() => () => speech.dispose(), [speech])
@@ -562,7 +592,7 @@ function Reader({ book, setBook, initial }: { book: Book; setBook: (b: Book) => 
       >
         <div
           className={cx(
-            'flex items-center gap-2 px-3 pb-6 pt-3 sm:px-5',
+            'safe-top flex items-center gap-2 px-3 pb-6 sm:px-5',
             showChrome && 'pointer-events-auto',
             'bg-gradient-to-b from-[var(--paper)] from-40% to-transparent',
           )}
@@ -575,7 +605,7 @@ function Reader({ book, setBook, initial }: { book: Book; setBook: (b: Book) => 
               label="View mode"
               value={viewMode}
               onChange={switchView}
-              className="hidden md:flex"
+              className="max-md:hidden"
               options={[
                 { value: 'text', label: 'Reading View', title: 'Extracted text, formatted for reading (M)' },
                 { value: 'pdf', label: 'PDF View', title: 'Original PDF pages (M)' },
@@ -590,7 +620,7 @@ function Reader({ book, setBook, initial }: { book: Book; setBook: (b: Book) => 
             />
             <IconButton icon="search" label="Search (/)" tipPos="bottom" active={panel === 'search'} onClick={() => setPanel(panel === 'search' ? null : 'search')} />
             <IconButton icon="list" label="Contents (T)" tipPos="bottom" active={panel === 'toc'} onClick={() => setPanel(panel === 'toc' ? null : 'toc')} />
-            <IconButton icon={fs.isFullscreen ? 'minimize' : 'maximize'} label={fs.isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'} tipPos="bottom" onClick={fs.toggle} className="hidden sm:inline-flex" />
+            <IconButton icon={fs.isFullscreen ? 'minimize' : 'maximize'} label={fs.isFullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'} tipPos="bottom" onClick={fs.toggle} className="max-sm:hidden" />
           </div>
         </div>
         {running && (
@@ -607,7 +637,7 @@ function Reader({ book, setBook, initial }: { book: Book; setBook: (b: Book) => 
       <div
         {...chrome.hoverProps}
         className={cx(
-          'absolute inset-x-0 bottom-0 z-30 flex flex-col items-center gap-2 bg-gradient-to-t from-[var(--paper)] from-65% to-transparent px-3 pb-5 pt-12 transition-all duration-300',
+          'safe-bottom absolute inset-x-0 bottom-0 z-30 flex flex-col items-center gap-2 bg-gradient-to-t from-[var(--paper)] from-65% to-transparent px-3 pt-12 transition-all duration-300',
           showChrome ? 'translate-y-0 opacity-100' : 'pointer-events-none translate-y-3 opacity-0',
         )}
       >
@@ -638,6 +668,16 @@ function Reader({ book, setBook, initial }: { book: Book; setBook: (b: Book) => 
 
       {/* Always-visible hairline progress bar */}
       <ThinProgress positions={positions} hidden={showChrome} />
+
+      {showWelcome && viewMode === 'text' && !book.likelyScanned && (
+        <WelcomeTip
+          onClose={dismissWelcome}
+          onStart={() => {
+            dismissWelcome()
+            controller.start()
+          }}
+        />
+      )}
 
       {/* "Read aloud from here" – appears where a word was clicked */}
       {readHere && settings.readAloud && (
@@ -780,6 +820,41 @@ function ScannedNotice({ onPdf, onRecognize }: { onPdf: () => void; onRecognize?
         </Button>
         <Button size="sm" variant="ghost" onClick={() => setDismissed(true)}>
           Dismiss
+        </Button>
+      </div>
+    </div>
+  )
+}
+
+/** Shown once to first-time readers: the three things worth knowing. */
+function WelcomeTip({ onClose, onStart }: { onClose: () => void; onStart: () => void }) {
+  const items: [Parameters<typeof Icon>[0]['name'] | 'Aa', string, string][] = [
+    ['play', 'Scroll hands-free', 'Press play or Space. Scroll by hand any time to pause.'],
+    ['Aa', 'Make it yours', 'Text size, font, line width and theme live under Aa.'],
+    ['volume', 'Listen', 'Turn on Read aloud, then tap any word to start there.'],
+  ]
+  return (
+    <div role="dialog" aria-label="Welcome to Folio" className="fade-in absolute inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+168px)] z-40 mx-auto max-w-[420px] rounded-3xl border border-line bg-panel p-5 shadow-float backdrop-blur-xl">
+      <p className="font-serif text-[19px] font-semibold text-ink">Your reading room</p>
+      <ul className="mt-4 space-y-3.5">
+        {items.map(([icon, title, text]) => (
+          <li key={title} className="flex gap-3">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent">
+              {icon === 'Aa' ? <span className="font-serif text-[15px]">Aa</span> : <Icon name={icon} size={16} />}
+            </span>
+            <span className="text-[14px] leading-snug">
+              <span className="block font-medium text-ink">{title}</span>
+              <span className="text-ink-soft">{text}</span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-5 flex gap-2">
+        <Button variant="primary" icon="play" className="flex-1" onClick={onStart}>
+          Scroll for me
+        </Button>
+        <Button variant="ghost" onClick={onClose}>
+          Got it
         </Button>
       </div>
     </div>

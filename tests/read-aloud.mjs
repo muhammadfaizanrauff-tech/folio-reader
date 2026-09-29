@@ -32,6 +32,7 @@ await ctx.addInitScript(() => {
   Object.defineProperty(window, 'speechSynthesis', { value: fake, configurable: true })
   window.SpeechSynthesisUtterance = class { constructor(t) { this.text = t; this.rate = 1 } }
 })
+await ctx.addInitScript(() => localStorage.setItem('folio.tip.reader.v1', '1'))
 const p = await ctx.newPage()
 const errs = []; p.on('pageerror', e => errs.push(e.message))
 const ok = (c, m) => {

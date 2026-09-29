@@ -165,6 +165,12 @@ await step('reader: formatted text with title, chapter headings and paragraphs',
   await shot('05-reader')
 })
 
+await step('reader: first-time welcome tip explains the basics, then stays dismissed', async () => {
+  await page.waitForSelector('[role=dialog][aria-label="Welcome to Folio"]', { timeout: 5000 })
+  await page.click('[role=dialog][aria-label="Welcome to Folio"] button:has-text("Got it")')
+  await page.waitForSelector('[aria-label="Welcome to Folio"]', { state: 'detached' })
+})
+
 await step('reader: virtualised — only a handful of pages in the DOM', async () => {
   const s = await readerState()
   console.log(`      rendered pages: ${s.renderedPages}, DOM nodes: ${s.domNodes}, scrollHeight: ${Math.round(s.scrollHeight)} px`)
@@ -378,8 +384,11 @@ await step('pdf view: renders original pages, zoom, page sync', async () => {
   await shot('11-pdf-view')
   await page.keyboard.press('+')
   await sleep(600)
-  const zoomLabel = await page.textContent('button[data-tip="Fit to width"]')
-  console.log(`      zoom now ${zoomLabel}`)
+  await page.mouse.move(700, 870)
+  await page.click('[aria-label^="Display"]')
+  const zoomLabel = await page.textContent('[role=dialog][aria-label="Display"] button[title="Fit to width"]')
+  console.log(`      zoom now ${zoomLabel} (from the Aa panel)`)
+  await page.keyboard.press('Escape')
   await page.keyboard.press('m')
   await page.waitForSelector('.reader-text p')
 })

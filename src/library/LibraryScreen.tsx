@@ -186,7 +186,7 @@ export function LibraryScreen() {
                   <button
                     type="button"
                     onClick={choose}
-                    className="flex min-h-[156px] items-center justify-center gap-2 rounded-2xl border border-dashed border-line-strong text-[14px] text-ink-soft transition-colors hover:border-accent hover:text-accent"
+                    className="flex min-h-[84px] items-center justify-center gap-2 rounded-2xl border border-dashed md:min-h-[156px] border-line-strong text-[14px] text-ink-soft transition-colors hover:border-accent hover:text-accent"
                   >
                     <Icon name="plus" size={16} /> Add PDF
                   </button>
@@ -215,7 +215,7 @@ export function LibraryScreen() {
 
 function EmptyState({ onChoose }: { onChoose: () => void }) {
   return (
-    <section className="fade-in mx-auto mt-16 max-w-xl text-center">
+    <section className="fade-in mx-auto mt-8 max-w-2xl text-center sm:mt-14">
       <button
         type="button"
         onClick={onChoose}
@@ -228,8 +228,21 @@ function EmptyState({ onChoose }: { onChoose: () => void }) {
         <span className="mt-2 text-[15px] leading-relaxed text-ink-soft">Drag and drop a PDF here, or click to choose one.</span>
         <span className="mt-6 inline-flex h-11 items-center gap-2 rounded-full bg-accent px-6 text-[15px] font-medium text-accent-ink">Choose PDF</span>
       </button>
-      <p className="mt-6 text-[13px] leading-relaxed text-ink-faint">
-        Everything stays on this device. Books are processed in your browser and saved locally, so large books (1,000+ pages) only need to be extracted once.
+      <ol className="mt-10 grid gap-4 text-left sm:grid-cols-3">
+        {[
+          ['1', 'Add a PDF', 'Books, reports, presentations – even 1,000+ pages.'],
+          ['2', 'Folio prepares it', 'Turns pages into clean, readable text. Pictures of text are recognized too.'],
+          ['3', 'Read your way', 'Adjust the text, scroll hands-free, or listen.'],
+        ].map(([n, title, text]) => (
+          <li key={n} className="rounded-2xl bg-paper-2/70 p-4">
+            <span className="flex h-7 w-7 items-center justify-center rounded-full bg-accent-soft text-[13px] font-semibold text-accent">{n}</span>
+            <p className="mt-3 text-[14px] font-medium text-ink">{title}</p>
+            <p className="mt-1 text-[13px] leading-relaxed text-ink-soft">{text}</p>
+          </li>
+        ))}
+      </ol>
+      <p className="mt-6 flex items-center justify-center gap-1.5 text-[13px] leading-relaxed text-ink-faint">
+        <Icon name="lock" size={13} /> Private by design: your books never leave this device.
       </p>
     </section>
   )

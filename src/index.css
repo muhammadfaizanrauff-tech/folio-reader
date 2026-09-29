@@ -19,7 +19,7 @@
   --ink-faint: #8f887d;
   --line: rgb(31 29 26 / 0.11);
   --line-strong: rgb(31 29 26 / 0.2);
-  --panel: rgb(255 253 249 / 0.94);
+  --panel: rgb(255 253 249 / 0.985);
   --hover: rgb(31 29 26 / 0.06);
   --accent: #a8552f;
   --accent-ink: #fffaf3;
@@ -40,7 +40,7 @@
   --ink-faint: #9c876d;
   --line: rgb(69 55 42 / 0.14);
   --line-strong: rgb(69 55 42 / 0.24);
-  --panel: rgb(248 239 222 / 0.95);
+  --panel: rgb(248 239 222 / 0.985);
   --hover: rgb(69 55 42 / 0.07);
   --accent: #9a552a;
   --accent-ink: #fff7ea;
@@ -61,7 +61,7 @@
   --ink-faint: #6f6b64;
   --line: rgb(255 255 255 / 0.09);
   --line-strong: rgb(255 255 255 / 0.17);
-  --panel: rgb(28 28 28 / 0.94);
+  --panel: rgb(28 28 28 / 0.985);
   --hover: rgb(255 255 255 / 0.07);
   --accent: #e0a26f;
   --accent-ink: #1b140e;
@@ -83,7 +83,7 @@
   --ink-faint: #6f6453;
   --line: rgb(207 191 159 / 0.1);
   --line-strong: rgb(207 191 159 / 0.18);
-  --panel: rgb(44 38 31 / 0.95);
+  --panel: rgb(44 38 31 / 0.985);
   --hover: rgb(207 191 159 / 0.08);
   --accent: #d19659;
   --accent-ink: #231a10;
@@ -426,4 +426,38 @@ body {
 
 .reader-text [data-block] {
   cursor: text;
+}
+
+/* ------------------------------------------------------------------ devices */
+
+/* Use the real visible height on phones (browser bars come and go). */
+@supports (height: 100dvh) {
+  #root {
+    height: 100dvh;
+  }
+}
+
+/* Keep controls clear of the notch and the home indicator. */
+.safe-top {
+  padding-top: max(0.75rem, env(safe-area-inset-top));
+}
+.safe-bottom {
+  padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+}
+
+/* iOS zooms the page when focusing inputs smaller than 16px. */
+@media (pointer: coarse) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* No grey flash when tapping on touch screens; controls feel native. */
+button,
+a,
+[role='button'] {
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
