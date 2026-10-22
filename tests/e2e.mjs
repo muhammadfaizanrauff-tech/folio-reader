@@ -505,6 +505,60 @@ await step('pictures: photos of pages become one book with recognized text', asy
   await shot('16-pictures-read')
 })
 
+await step('pictures: a full-page phone screenshot of a long story is read top to bottom', async () => {
+  const story = [
+    'The lighthouse keeper woke before dawn and climbed the narrow stairs to check the lamp.',
+    'Fog rolled across the harbour, hiding the fishing boats that bobbed against the pier.',
+    'His daughter Mara had promised to bring fresh bread from the village bakery that morning.',
+    'At noon a stranger arrived with a wooden chest and a letter sealed in green wax.',
+    'The letter spoke of a ship that had vanished near the northern rocks forty years ago.',
+    'Mara read it twice by the window while the kettle whistled on the old iron stove.',
+    'That evening the wind changed direction and the waves grew taller than the sea wall.',
+    'Someone was signalling from the island with a lantern, three short flashes and a long one.',
+    'They rowed out together, the stranger pulling the oars while Mara held the compass steady.',
+    'On the island they found a cave filled with charts, bottles and a captain’s silver bell.',
+    'The bell carried the same name as the ship described in the letter from the chest.',
+    'By sunrise the storm had passed and the harbour was calm and bright once more.',
+  ]
+  // Story pages on phones are very long: pad every paragraph so the screenshot is ~11,000 px tall (1170 px wide).
+  // (Chrome can't take screenshots taller than 16,384 px – it repeats the top of the page instead.)
+  const FILLER = [
+    'Gulls circled above the cliffs and the smell of salt and tar drifted through the open shutters while the old clock ticked in the hall, counting the slow hours until the tide turned again and the boats came home with their nets heavy and silver in the evening light, as they had done every autumn for as long as anyone in the village could remember.',
+    'Nobody in the village spoke much about the old days, but the fishermen still lowered their caps when they passed the rocks at the mouth of the bay, and the children were told never to swim beyond the second buoy no matter how calm the water looked on a summer afternoon, because the currents there were older and stronger than any of them.',
+  ]
+  const shooter = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 3 })
+  const p = await shooter.newPage()
+  await p.setContent(
+    `<body style="margin:0;font:17px/1.6 -apple-system,Helvetica,Arial,sans-serif;background:#fff;color:#222">
+      <header style="background:#1d3557;color:#fff;padding:14px 20px;font-weight:600">Harbour Tales</header>
+      <main style="padding:8px 20px 40px"><h1 style="font-size:28px;line-height:1.2">The Keeper’s Daughter</h1>
+      ${story.map((s, i) => `<p style="margin:0 0 18px">${s} ${FILLER[i % 2]}</p>`).join('')}</main></body>`,
+  )
+  const buffer = await p.screenshot({ type: 'png', fullPage: true })
+  const tall = await p.evaluate(() => [document.documentElement.scrollWidth * 3, document.documentElement.scrollHeight * 3])
+  console.log(`      screenshot ${tall[0]} × ${tall[1]} px`)
+  await shooter.close()
+  await page.goto(`${BASE}/#/`)
+  await page.waitForSelector('text=Folio')
+  await page.setInputFiles('input[type=file]', { name: 'story-screenshot.png', mimeType: 'image/png', buffer })
+  await page.waitForSelector('button:has-text("Extract & Read")', { timeout: 30000 })
+  await page.click('button:has-text("Extract & Read")')
+  await page.waitForURL(/#\/read\//, { timeout: 180000 })
+  await page.waitForSelector('.reader-text p', { timeout: 20000 })
+  await sleep(500)
+  const text = (await page.evaluate(async () => {
+    const { getDB } = await import('/src/storage/db.ts')
+    const id = location.hash.split('/').pop()
+    const pages = (await (await getDB()).getAll('pages')).filter((r) => r.bookId === id)
+    return pages.flatMap((r) => r.blocks.map((b) => b.x)).join(' ')
+  })).replace(/\s+/g, ' ')
+  const found = story.filter((s) => text.includes(s.slice(0, 40)))
+  console.log(`      ${found.length} of ${story.length} story paragraphs recognized`)
+  assert(found.length >= story.length - 1, `only ${found.length} of ${story.length} paragraphs recognized`)
+  assert(text.includes('lighthouse keeper woke') && text.includes('harbour was calm'), 'start or end of the story missing')
+  await shot('17-pictures-long-screenshot')
+})
+
 await step('pictures: an undecodable picture shows a friendly error', async () => {
   await page.goto(`${BASE}/#/`)
   await page.waitForSelector('text=Folio')
