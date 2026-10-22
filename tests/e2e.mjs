@@ -467,6 +467,51 @@ await step('OCR: presentation with text only in images becomes readable text', a
   assert(!text.includes('NORTHWIND STUDIO'), 'repeated slide label not removed')
 })
 
+await step('pictures: photos of pages become one book with recognized text', async () => {
+  // Two "photos" of printed pages: a PNG screenshot and a JPEG, chosen out of order.
+  // A separate context: earlier steps (fullscreen, zoom) leave the main one unfit for screenshots.
+  const shooter = await browser.newContext({ viewport: { width: 900, height: 640 }, deviceScaleFactor: 2 })
+  const snap = async (heading, body, type) => {
+    const p = await shooter.newPage()
+    await p.setContent(`<body style="margin:60px;font:22px/1.5 Georgia,serif;background:#fff"><h1 style="font-size:44px">${heading}</h1><p>${body}</p></body>`)
+    const buffer = await p.screenshot({ type, ...(type === 'jpeg' ? { quality: 90 } : {}) })
+    await p.close()
+    return buffer
+  }
+  const one = await snap('Morning Notes', 'Water the tomatoes before the sun gets too hot in the garden.', 'png')
+  const two = await snap('Evening Plans', 'Call the bakery about the birthday cake and pick it up on Friday.', 'jpeg')
+  await shooter.close()
+  await page.goto(`${BASE}/#/`)
+  await page.waitForSelector('text=Folio')
+  await page.setInputFiles('input[type=file]', [
+    { name: 'page-2.jpg', mimeType: 'image/jpeg', buffer: two },
+    { name: 'page-1.png', mimeType: 'image/png', buffer: one },
+  ])
+  await page.waitForSelector('button:has-text("Extract & Read")', { timeout: 30000 })
+  const info = await page.textContent('main')
+  assert(info.includes('2 pictures'), 'picture count not shown')
+  assert(info.includes('page-1'), 'title not taken from the first picture')
+  assert(info.includes('page-1.png + 1 more'), 'pictures not listed in page order')
+  await shot('15-pictures-upload')
+  await page.click('button:has-text("Extract & Read")')
+  await page.waitForURL(/#\/read\//, { timeout: 180000 })
+  await page.waitForSelector('.reader-text h1:has-text("Evening Plans")', { timeout: 20000 })
+  const heads = await page.$$eval('.reader-text h1', (h) => h.map((x) => x.textContent))
+  const text = await page.textContent('.reader-text')
+  console.log(`      headings: ${heads.join(' · ')}`)
+  assert(heads.indexOf('Morning Notes') >= 0 && heads.indexOf('Morning Notes') < heads.indexOf('Evening Plans'), 'pictures not in file-name order')
+  assert(text.includes('Water the tomatoes'), 'PNG text not recognized')
+  assert(text.includes('birthday cake'), 'JPEG text not recognized')
+  await shot('16-pictures-read')
+})
+
+await step('pictures: an undecodable picture shows a friendly error', async () => {
+  await page.goto(`${BASE}/#/`)
+  await page.waitForSelector('text=Folio')
+  await page.setInputFiles('input[type=file]', { name: 'broken.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('not really a jpeg') })
+  await page.waitForSelector('text=This picture can’t be opened', { timeout: 15000 })
+})
+
 // ------------------------------------------------------------------ cancel + resume
 await step('cancel keeps processed pages; resume continues from there', async () => {
   await uploadFile('novel-1500.pdf')

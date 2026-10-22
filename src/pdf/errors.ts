@@ -10,6 +10,7 @@ export type PdfErrorKind =
   | 'memory'
   | 'storage-full'
   | 'not-pdf'
+  | 'bad-image'
   | 'cancelled'
   | 'unknown'
 
@@ -29,6 +30,14 @@ export function friendlyError(err: unknown): FriendlyError {
   const msg = e?.message ?? String(err)
   const detail = name ? `${name}: ${msg}` : msg
 
+  if (name === 'ImageDecodeError')
+    return {
+      kind: 'bad-image',
+      title: 'This picture can’t be opened',
+      message:
+        'Folio reads JPEG, PNG, WebP, GIF and BMP pictures. iPhone HEIC photos only open in Safari – elsewhere, share or export them as JPEG first.',
+      detail,
+    }
   if (name === 'PasswordException') {
     // PDF.js PasswordResponses: 1 = NEED_PASSWORD, 2 = INCORRECT_PASSWORD
     if (e?.code === 2)

@@ -4,6 +4,7 @@ import { BookCard, Cover } from './BookCard'
 import { UploadView } from '../upload/UploadView'
 import { extraction, useExtractionJobs } from '../extraction/manager'
 import { deleteBook, estimateStorage } from '../storage/db'
+import { isImageFile, sortByName } from '../pdf/images'
 import { navigate } from '../router'
 import { updateSettings, useSettings } from '../storage/settings'
 import { Button, IconButton, ProgressBar } from '../components/ui'
@@ -19,7 +20,7 @@ export function LibraryScreen() {
   const { entries, error, refresh } = useLibrary()
   const jobs = useExtractionJobs()
   const settings = useSettings()
-  const [pendingFile, setPendingFile] = useState<File | null>(null)
+  const [pendingFiles, setPendingFiles] = useState<File[] | null>(null)
   const [dragging, setDragging] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
   const [storage, setStorage] = useState<{ usage: number; quota: number } | null>(null)
@@ -36,12 +37,14 @@ export function LibraryScreen() {
     const list = Array.from(files ?? [])
     if (!list.length) return
     const pdf = list.find((f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name))
-    if (!pdf) {
-      setNotice('That file isn’t a PDF. Please choose a .pdf file.')
+    // A PDF wins; otherwise all chosen pictures become one book, a page per picture.
+    const pictures = sortByName(list.filter(isImageFile))
+    if (!pdf && !pictures.length) {
+      setNotice('That file isn’t a PDF or a picture. Please choose a PDF, or a photo or screenshot (JPEG, PNG…).')
       return
     }
     setNotice(null)
-    setPendingFile(pdf)
+    setPendingFiles(pdf ? [pdf] : pictures)
   }, [])
 
   const onDrop = (e: DragEvent) => {
@@ -72,7 +75,8 @@ export function LibraryScreen() {
       <input
         ref={inputRef}
         type="file"
-        accept="application/pdf,.pdf"
+        accept="application/pdf,.pdf,image/*"
+        multiple
         className="hidden"
         onChange={(e) => {
           acceptFiles(e.target.files)
@@ -81,7 +85,7 @@ export function LibraryScreen() {
       />
 
       <header className="mx-auto flex max-w-6xl items-center justify-between px-6 pb-4 pt-8 sm:px-10">
-        <button type="button" onClick={() => setPendingFile(null)} className="flex items-baseline gap-2.5" aria-label="Folio library">
+        <button type="button" onClick={() => setPendingFiles(null)} className="flex items-baseline gap-2.5" aria-label="Folio library">
           <span className="font-serif text-[26px] font-semibold tracking-tight text-ink">Folio</span>
           <span className="hidden text-[13px] text-ink-faint sm:inline">PDF book reader</span>
         </button>
@@ -93,21 +97,21 @@ export function LibraryScreen() {
             tipPos="bottom"
             onClick={() => updateSettings({ theme: THEME_CYCLE[(THEME_CYCLE.indexOf(settings.theme) + 1) % THEME_CYCLE.length] })}
           />
-          {!pendingFile && (
+          {!pendingFiles && (
             <Button variant="primary" icon="plus" onClick={choose} className="ml-2">
-              Add PDF
+              Add<span className="hidden sm:inline">&nbsp;PDF or photo</span>
             </Button>
           )}
         </div>
       </header>
 
       <main className="mx-auto max-w-6xl px-6 pb-20 sm:px-10">
-        {pendingFile ? (
+        {pendingFiles ? (
           <div className="pt-8">
             <UploadView
-              file={pendingFile}
+              files={pendingFiles}
               existing={books.map((b) => b.book)}
-              onCancel={() => setPendingFile(null)}
+              onCancel={() => setPendingFiles(null)}
               onChooseAnother={choose}
             />
           </div>
@@ -188,7 +192,7 @@ export function LibraryScreen() {
                     onClick={choose}
                     className="flex min-h-[84px] items-center justify-center gap-2 rounded-2xl border border-dashed md:min-h-[156px] border-line-strong text-[14px] text-ink-soft transition-colors hover:border-accent hover:text-accent"
                   >
-                    <Icon name="plus" size={16} /> Add PDF
+                    <Icon name="plus" size={16} /> Add PDF or photos
                   </button>
                 </div>
               </section>
@@ -206,7 +210,7 @@ export function LibraryScreen() {
       >
         <div className="flex flex-col items-center gap-3 rounded-3xl border-2 border-dashed border-accent px-16 py-12 text-accent">
           <Icon name="upload" size={32} />
-          <p className="font-serif text-xl">Drop your PDF to add it</p>
+          <p className="font-serif text-xl">Drop a PDF or photos to add them</p>
         </div>
       </div>
     </div>
@@ -225,12 +229,12 @@ function EmptyState({ onChoose }: { onChoose: () => void }) {
           <Icon name="upload" size={24} />
         </span>
         <span className="mt-6 font-serif text-[24px] font-semibold text-ink">Add your first book</span>
-        <span className="mt-2 text-[15px] leading-relaxed text-ink-soft">Drag and drop a PDF here, or click to choose one.</span>
-        <span className="mt-6 inline-flex h-11 items-center gap-2 rounded-full bg-accent px-6 text-[15px] font-medium text-accent-ink">Choose PDF</span>
+        <span className="mt-2 text-[15px] leading-relaxed text-ink-soft">Drag and drop a PDF or photos here, or click to choose.</span>
+        <span className="mt-6 inline-flex h-11 items-center gap-2 rounded-full bg-accent px-6 text-[15px] font-medium text-accent-ink">Choose PDF or photos</span>
       </button>
       <ol className="mt-10 grid gap-4 text-left sm:grid-cols-3">
         {[
-          ['1', 'Add a PDF', 'Books, reports, presentations – even 1,000+ pages.'],
+          ['1', 'Add a PDF or photos', 'Books, reports, presentations – even 1,000+ pages. Or photos and screenshots of text.'],
           ['2', 'Folio prepares it', 'Turns pages into clean, readable text. Pictures of text are recognized too.'],
           ['3', 'Read your way', 'Adjust the text, scroll hands-free, or listen.'],
         ].map(([n, title, text]) => (

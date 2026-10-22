@@ -28,7 +28,7 @@ function newId(): string {
 export function titleFromFilename(name: string): string {
   return (
     name
-      .replace(/\.pdf$/i, '')
+      .replace(/\.(pdf|jpe?g|png|webp|gif|bmp|avif|heic|heif|tiff?)$/i, '')
       .replace(/[_]+/g, ' ')
       .replace(/\s+/g, ' ')
       .trim() || 'Untitled book'
